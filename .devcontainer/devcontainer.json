@@ -11,11 +11,18 @@
 	// Add the IDs of extensions you want installed when the container is created.
 	"extensions": [
 		"ms-azuretools.vscode-azurefunctions",
-		"ms-dotnettools.csharp"
+		"ms-dotnettools.csharp",
+		"humao.rest-client",
+		"ms-vscode.powershell",
+		"ms-azuretools.vscode-docker"
 	],
 
+	"features": {
+		"powershell": "latest",
+		"docker-from-docker": "latest"
+	},
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "dotnet restore",
+	"postCreateCommand": "cp /bcch/* /workspaces/bcartifacturl-proxy && sed -i 's/$telemetryScope/#$telemetryScope/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Track/#Track/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Export-ModuleMember/#Export-ModuleMember/g' ./Get-BCArtifactUrl.ps1 && dotnet restore",
 
 	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
 	"remoteUser": "vscode"

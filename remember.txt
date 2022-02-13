@@ -1,0 +1,18 @@
+docker build -t tobiasfenster/bcaup:0.9 . 
+docker push  tobiasfenster/bcaup:0.9
+
+az group create --name bcaurlproxy --location germanywestcentral
+az storage account create --name bcaurlproxy --location germanywestcentral --resource-group bcaurlproxy --sku Standard_LRS
+az storage account show-connection-string --resource-group bcaurlproxy --name bcaurlproxy --query connectionString --output tsv    --> store for later
+az functionapp plan create --resource-group bcaurlproxy --name bcaurlproxy --location germanywestcentral --number-of-workers 1 --sku EP1 --is-linux
+Configure max instances
+az functionapp create --name bca-url-proxy --storage-account bcaurlproxy --resource-group bcaurlproxy --plan bcaurlproxy --deployment-container-image-name tobiasfenster/bcaup:0.9 --functions-version 4
+az functionapp config appsettings set --name bca-url-proxy --resource-group bcaurlproxy --settings ... (see above)
+
+az functionapp delete --name bca-url-proxy --resource-group bcaurlproxy
+
+https://docs.microsoft.com/en-us/azure/azure-functions/functions-create-function-linux-custom-image?tabs=isolated-process%2Cbash%2Cazure-cli&pivots=programming-language-csharp
+
+ToDo:
+- CI
+- CD (https://docs.microsoft.com/en-us/azure/azure-functions/functions-create-function-linux-custom-image?tabs=isolated-process%2Cbash%2Cazure-cli&pivots=programming-language-csharp#enable-continuous-deployment-to-azure)
