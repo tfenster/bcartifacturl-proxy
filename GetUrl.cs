@@ -32,7 +32,8 @@ namespace bcaup
             string before,
             string storageAccount,
             string sasToken,
-            string doNotCheckPlatform)
+            string doNotCheckPlatform,
+            string doNotRedirect)
         {
             _logger.LogInformation("C# HTTP trigger function processed a request.");
 
@@ -76,7 +77,14 @@ namespace bcaup
                         expiration = type.ToLower() == "onprem" ? DateTime.Now.AddHours(24) : DateTime.Now.AddHours(1)
                     };
                     URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
-                    response.WriteString(url);
+                    if (doNotRedirect == "true")
+                        response.WriteString(url);
+                    else
+                    {
+                        response.StatusCode = HttpStatusCode.Redirect;
+                        response.Headers.Add("Location", url);
+                    }
+
                 }
             }
             catch (Exception ex)
