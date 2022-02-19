@@ -15,7 +15,7 @@ namespace bcaup
     {
         private readonly ILogger _logger;
         private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
-        private const string VERSION = "1.0.1";
+        private const string VERSION = "1.0.2";
 
         public GetUrl(ILoggerFactory loggerFactory)
         {
@@ -64,29 +64,30 @@ namespace bcaup
                 bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
 
+                var url = "";
+
                 if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.expiration > DateTime.Now)
                 {
                     response.Headers.Add("X-bcaup-from-cache", "true");
-                    response.WriteString(cachedUrl.url);
+                    url = cachedUrl.url;
                 }
                 else
                 {
                     response.Headers.Add("X-bcaup-from-cache", "false");
-                    var url = await GetUrlFromBackend(bcchCommand);
+                    url = await GetUrlFromBackend(bcchCommand);
                     var ce = new CacheEntry
                     {
                         url = url,
                         expiration = type.ToLower() == "onprem" ? DateTime.Now.AddHours(24) : DateTime.Now.AddHours(1)
                     };
                     URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
-                    if (doNotRedirect == "true")
-                        response.WriteString(url);
-                    else
-                    {
-                        response.StatusCode = HttpStatusCode.Redirect;
-                        response.Headers.Add("Location", url);
-                    }
-
+                }
+                if (doNotRedirect == "true")
+                    response.WriteString(url);
+                else
+                {
+                    response.StatusCode = HttpStatusCode.Redirect;
+                    response.Headers.Add("Location", url);
                 }
             }
             catch (Exception ex)
