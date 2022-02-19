@@ -15,6 +15,7 @@ namespace bcaup
     {
         private readonly ILogger _logger;
         private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
+        private const string VERSION = "1.0.1";
 
         public GetUrl(ILoggerFactory loggerFactory)
         {
@@ -40,6 +41,7 @@ namespace bcaup
             var response = req.CreateResponse(HttpStatusCode.OK);
             response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
             response.Headers.Add("X-bccontainerhelper-version", Environment.GetEnvironmentVariable("BCCH_VERSION"));
+            response.Headers.Add("X-bcaup-version", VERSION);
             var bcchCommand = "";
 
             try
