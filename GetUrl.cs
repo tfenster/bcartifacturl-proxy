@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Linq;
 using System.Management.Automation;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -33,6 +34,7 @@ namespace bcaup
             string before,
             string storageAccount,
             string sasToken,
+            string accept_insiderEula,
             string doNotCheckPlatform,
             string doNotRedirect)
         {
@@ -56,12 +58,13 @@ namespace bcaup
                 var beforeParam = validateTextParam("before", before);
                 var storageAccountParam = validateTextParam("storageAccount", storageAccount);
                 var sasTokenParam = validateTextParam("sasToken", sasToken);
+                var accept_insiderEulaParam = GetAcceptInsiderEulaParam(accept_insiderEula, select, sasToken);
 
-                var doNotCheckPlatformParam = "";
-                if (doNotCheckPlatform == "true")
+                var doNotCheckPlatformParam = string.Empty;
+                if (IsValidParamSet(doNotCheckPlatform))
                     doNotCheckPlatformParam = " -doNotCheckPlatformParam";
 
-                bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{doNotCheckPlatformParam}";
+                bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
 
                 var url = "";
@@ -141,6 +144,38 @@ namespace bcaup
             if (!string.IsNullOrEmpty(paramValue))
                 validatedParam = $" -{paramName} \"{paramValue}\"";
             return validatedParam;
+        }
+
+        private bool IsValidParamSet(string param)
+        {
+            // Accept parameter without setting explict to true and with format "parameter=true"
+            return (param is not null && (param.All(char.IsWhiteSpace) || param.ToLower() == "true"));
+        }
+
+        private string GetAcceptInsiderEulaParam(string accept_insiderEula, string select, string sasToken)
+        {
+            var accept_insiderEulaParam = " -accept_insiderEula";
+
+            if (IsValidParamSet(accept_insiderEula))
+                return accept_insiderEulaParam;
+
+            if (!string.IsNullOrEmpty(accept_insiderEula))
+                return string.Empty;
+
+            if (!string.IsNullOrEmpty(sasToken))
+                return string.Empty;
+
+            if (string.IsNullOrEmpty(select))
+                return string.Empty;
+
+            switch (select.ToLower())
+            {
+                case "nextminor":
+                case "nextmajor":
+                    return accept_insiderEulaParam;
+                default:
+                    return string.Empty;
+            }
         }
 
         private struct CacheEntry
