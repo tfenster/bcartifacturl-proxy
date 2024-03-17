@@ -1,0 +1,37 @@
+@baseurl = http://localhost:7071/bca-url
+
+### TEST #1
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox"
+GET {{baseurl}}?DoNotRedirect=true
+
+### TEST #2
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMinor" -accept_insiderEula
+GET {{baseurl}}?select=NextMinor&DoNotRedirect=true
+
+### TEST #3
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMinor" -accept_insiderEula
+GET {{baseurl}}?select=NextMajor&DoNotRedirect=true
+
+### TEST #4
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -sasToken "123"
+GET {{baseurl}}?sasToken=123&DoNotRedirect=true
+
+### TEST #5
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMajor" -sasToken "123"
+GET {{baseurl}}?select=NextMajor&sasToken=123&DoNotRedirect=true
+
+### TEST #6
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMajor" -accept_insiderEula
+GET {{baseurl}}?select=NextMajor&accept_insiderEula&DoNotRedirect=true
+
+### TEST #7
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMajor" -accept_insiderEula
+GET {{baseurl}}?select=NextMajor&accept_insiderEula=true&DoNotRedirect=true
+
+### TEST #8
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMajor"
+GET {{baseurl}}?select=NextMajor&accept_insiderEula=false&DoNotRedirect=true
+
+### TEST #9
+### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox" -select "NextMajor"
+GET {{baseurl}}/sandbox?select=nextmajor&accept_insiderEula&DoNotRedirect=true
