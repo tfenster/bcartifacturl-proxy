@@ -36,5 +36,5 @@ RUN curl -ssL "https://www.powershellgallery.com/api/v2/package/BcContainerHelpe
     && unzip bcch.zip -d temp \
     && rm bcch.zip \
     && cp temp/HelperFunctions.ps1 . \
-    && cp temp/Misc/Get-BCArtifactUrl.ps1 . \
+    && cp temp/Artifacts/Get-BCArtifactUrl.ps1 . \
     && rm -r temp
