@@ -363,11 +363,11 @@ try {
     }
 }
 catch {
-    # TrackException -telemetryScope $telemetryScope -errorRecord $_
+    #TrackException -telemetryScope #$telemetryScope -errorRecord $_
     throw
 }
 finally {
-    # TrackTrace -telemetryScope $telemetryScope
+    #TrackTrace -telemetryScope #$telemetryScope
 }
 }
-# Export-ModuleMember -Function Get-BCArtifactUrl
+#Export-ModuleMember -Function Get-BCArtifactUrl
