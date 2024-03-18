@@ -29,7 +29,7 @@ if (-not ([System.Management.Automation.PSTypeName]"TimeoutWebClient").Type) {
 }
 }
 
-$sslCallbackCode = @"
+<#$sslCallbackCode = @"
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 
@@ -48,7 +48,7 @@ if (-not ([System.Management.Automation.PSTypeName]"SslVerification").Type) {
     else {
         Add-Type -TypeDefinition $sslCallbackCode -Language CSharp -ReferencedAssemblies @('System.Net.Http') -WarningAction SilentlyContinue | Out-Null
     }
-}
+}#>
 
 function Get-DefaultCredential {
     Param(
