@@ -159,23 +159,7 @@ namespace bcaup
             if (IsValidParamSet(accept_insiderEula))
                 return accept_insiderEulaParam;
 
-            if (!string.IsNullOrEmpty(accept_insiderEula))
-                return string.Empty;
-
-            if (!string.IsNullOrEmpty(sasToken))
-                return string.Empty;
-
-            if (string.IsNullOrEmpty(select))
-                return string.Empty;
-
-            switch (select.ToLower())
-            {
-                case "nextminor":
-                case "nextmajor":
-                    return accept_insiderEulaParam;
-                default:
-                    return string.Empty;
-            }
+            return string.Empty;
         }
 
         private struct CacheEntry
