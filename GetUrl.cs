@@ -16,7 +16,7 @@ namespace bcaup
     {
         private readonly ILogger _logger;
         private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
-        private const string VERSION = "1.1.2";
+        private const string VERSION = "1.2.1";
 
         public GetUrl(ILoggerFactory loggerFactory)
         {
