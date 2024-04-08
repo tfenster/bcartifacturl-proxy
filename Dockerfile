@@ -15,7 +15,7 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     AzureFunctionsJobHost__Logging__Console__IsEnabled=true
 
 # must be the same as the Dockerfile in .devcontainer
-ENV BCCH_VERSION=6.0.11
+ENV BCCH_VERSION=6.0.13
 
 COPY --from=installer-env ["/home/site/wwwroot", "/home/site/wwwroot"]
 RUN wget https://packages.microsoft.com/config/debian/10/packages-microsoft-prod.deb && \

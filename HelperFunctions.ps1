@@ -335,42 +335,6 @@ function AssumeNavContainer {
     }
 }
 
-function TestSasToken {
-    Param
-    (
-        [string] $url
-    )
-
-    $sasToken = "?$("$($url)?".Split('?')[1])"
-    if ($sasToken -eq '?') {
-        # No SAS token in URL
-        return
-    }
-
-    try {
-        $se = $sasToken.Split('?')[1].Split('&') | Where-Object { $_.StartsWith('se=') } | ForEach-Object { [Uri]::UnescapeDataString($_.Substring(3)) }
-        $st = $sasToken.Split('?')[1].Split('&') | Where-Object { $_.StartsWith('st=') } | ForEach-Object { [Uri]::UnescapeDataString($_.Substring(3)) }
-        $sv = $sasToken.Split('?')[1].Split('&') | Where-Object { $_.StartsWith('sv=') } | ForEach-Object { [Uri]::UnescapeDataString($_.Substring(3)) }
-        $sig = $sasToken.Split('?')[1].Split('&') | Where-Object { $_.StartsWith('sig=') } | ForEach-Object { [Uri]::UnescapeDataString($_.Substring(4)) }
-        if ($sv -ne '2021-10-04' -or $sig -eq '' -or $se -eq '' -or $st -eq '') {
-            throw "Wrong format"
-        }
-        if ([DateTime]::Now -lt [DateTime]$st) {
-            Write-Host "::ERROR::The sas token provided isn't valid before $(([DateTime]$st).ToString())"
-        }
-        if ([DateTime]::Now -gt [DateTime]$se) {
-            Write-Host "::ERROR::The sas token provided expired on $(([DateTime]$se).ToString())"
-        }
-        elseif ([DateTime]::Now.AddDays(14) -gt [DateTime]$se) {
-            Write-Host "::WARNING::The sas token provided will expire on $(([DateTime]$se).ToString())"
-        }
-    }
-    catch {
-        $message = $_.ToString()
-        throw "The sas token provided is not valid, error message was: $message"
-    }
-}
-
 function Expand-7zipArchive {
     Param (
         [Parameter(Mandatory = $true)]
@@ -552,7 +516,7 @@ function CopyAppFilesToFolder {
         New-Item -Path $folder -ItemType Directory | Out-Null
     }
     $appFiles | Where-Object { $_ } | ForEach-Object {
-        $appFile = $_
+        $appFile = "$_"
         if ($appFile -like "http://*" -or $appFile -like "https://*") {
             $appUrl = $appFile
             $appFileFolder = Join-Path ([System.IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString())
@@ -564,13 +528,8 @@ function CopyAppFilesToFolder {
             }
         }
         elseif (Test-Path $appFile -PathType Container) {
-            get-childitem $appFile -Filter '*.app' -Recurse | ForEach-Object {
-                $destFile = Join-Path $folder $_.Name
-                if (Test-Path $destFile) {
-                    Write-Host -ForegroundColor Yellow "::WARNING::$([System.IO.Path]::GetFileName($destFile)) already exists, it looks like you have multiple app files with the same name. App filenames must be unique."
-                }
-                Copy-Item -Path $_.FullName -Destination $destFile -Force
-                $destFile
+            Get-ChildItem $appFile -Recurse | ForEach-Object {
+                CopyAppFilesToFolder -appFile $_.FullName -folder $folder
             }
         }
         elseif (Test-Path $appFile -PathType Leaf) {
@@ -587,9 +546,7 @@ function CopyAppFilesToFolder {
                             $copied = $true
                         }
                         Expand-Archive $appfile -DestinationPath $tmpFolder -Force
-                        Get-ChildItem -Path $tmpFolder -Recurse | Where-Object { $_.Name -like "*.app" -or $_.Name -like "*.zip" } | ForEach-Object {
-                            CopyAppFilesToFolder -appFile $_.FullName -folder $folder
-                        }
+                        CopyAppFilesToFolder -appFiles $tmpFolder -folder $folder
                     }
                     finally {
                         Remove-Item -Path $tmpFolder -Recurse -Force
@@ -1180,6 +1137,7 @@ function GetAppInfo {
                         "propagateDependencies" = ($manifest.PSObject.Properties.Name -eq 'PropagateDependencies') -and $manifest.PropagateDependencies
                         "dependencies"          = @(if($manifest.PSObject.Properties.Name -eq 'dependencies'){$manifest.dependencies | ForEach-Object { @{ "id" = $_.id; "name" = $_.name; "publisher" = $_.publisher; "version" = $_.version }}})
                     }
+                    Write-Host " (succeeded using altool)"
                 }
                 else {
                     if (!$assembliesAdded) {
@@ -1206,8 +1164,9 @@ function GetAppInfo {
                         "platform"              = "$($manifest.Platform)"
                         "propagateDependencies" = $manifest.PropagateDependencies
                     }
+                    $packageStream.Close()
+                    Write-Host " (succeeded using codeanalysis)"
                 }
-                Write-Host " (succeeded)"
                 if ($cacheAppInfoPath) {
                     $appInfoCache | Add-Member -MemberType NoteProperty -Name $path -Value $appInfo
                     $cacheUpdated = $true
@@ -1389,11 +1348,44 @@ function GetApplicationDependency( [string] $appFile, [string] $minVersion = "0.
     return $version
 }
 
+function ReplaceCDN {
+    Param(
+        [string] $sourceUrl,
+        [switch] $useBlobUrl
+    )
+
+    $bcCDNs = @(
+        @{ "oldCDN" = "bcartifacts.azureedge.net";         "newCDN" = "bcartifacts-exdbf9fwegejdqak.b02.azurefd.net";         "blobUrl" = "bcartifacts.blob.core.windows.net" },
+        @{ "oldCDN" = "bcinsider.azureedge.net";           "newCDN" = "bcinsider-fvh2ekdjecfjd6gk.b02.azurefd.net";           "blobUrl" = "bcinsider.blob.core.windows.net" },
+        @{ "oldCDN" = "bcpublicpreview.azureedge.net";     "newCDN" = "bcpublicpreview-f2ajahg0e2cudpgh.b02.azurefd.net";     "blobUrl" = "bcpublicpreview.blob.core.windows.net" },
+        @{ "oldCDN" = "businesscentralapps.azureedge.net"; "newCDN" = "businesscentralapps-hkdrdkaeangzfydv.b02.azurefd.net"; "blobUrl" = "businesscentralapps.blob.core.windows.net" },
+        @{ "oldCDN" = "bcprivate.azureedge.net";           "newCDN" = "bcprivate-fmdwbsb3ekbkc0bt.b02.azurefd.net";           "blobUrl" = "bcprivate.blob.core.windows.net" }
+    )
+
+    foreach($cdn in $bcCDNs) {
+        $found = $false
+        $cdn.blobUrl, $cdn.newCDN, $cdn.oldCDN | ForEach-Object {
+            if ($sourceUrl.ToLowerInvariant().StartsWith("https://$_/")) {
+                $sourceUrl = "https://$(if($useBlobUrl){$cdn.blobUrl}else{$cdn.newCDN})/$($sourceUrl.Substring($_.Length+9))"
+                $found = $true
+            }
+            if ($sourceUrl -eq $_) {
+                $sourceUrl = "$(if($useBlobUrl){$cdn.blobUrl}else{$cdn.newCDN})"
+                $found = $true
+            }
+        }
+        if ($found) {
+            break
+        }
+    }
+    $sourceUrl
+}
+
 # SIG # Begin signature block
 # MIIr3wYJKoZIhvcNAQcCoIIr0DCCK8wCAQExDzANBglghkgBZQMEAgEFADB5Bgor
 # BgEEAYI3AgEEoGswaTA0BgorBgEEAYI3AgEeMCYCAwEAAAQQH8w7YFlLCE63JNLG
-# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCBz7yAmYXUUUN9N
-# uGD+CL5MCcPx5yJb+d2YgusHdgCXjqCCJPcwggVvMIIEV6ADAgECAhBI/JO0YFWU
+# KX7zUQIBAAIBAAIBAAIBAAIBADAxMA0GCWCGSAFlAwQCAQUABCD7QiQkkkA/Nuef
+# 7wSanWratoESubJ4ov31ZNMc/cDLGaCCJPcwggVvMIIEV6ADAgECAhBI/JO0YFWU
 # jTanyYqJ1pQWMA0GCSqGSIb3DQEBDAUAMHsxCzAJBgNVBAYTAkdCMRswGQYDVQQI
 # DBJHcmVhdGVyIE1hbmNoZXN0ZXIxEDAOBgNVBAcMB1NhbGZvcmQxGjAYBgNVBAoM
 # EUNvbW9kbyBDQSBMaW1pdGVkMSEwHwYDVQQDDBhBQUEgQ2VydGlmaWNhdGUgU2Vy
@@ -1595,34 +1587,34 @@ function GetApplicationDependency( [string] $appFile, [string] $minVersion = "0.
 # EyJTZWN0aWdvIFB1YmxpYyBDb2RlIFNpZ25pbmcgQ0EgUjM2AhANIM3qwHRbWKHw
 # +Zq6JhzlMA0GCWCGSAFlAwQCAQUAoIGEMBgGCisGAQQBgjcCAQwxCjAIoAKAAKEC
 # gAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEOMAwG
-# CisGAQQBgjcCARUwLwYJKoZIhvcNAQkEMSIEIGzauquhbAI2KUsY2hn1JJ4vkjeU
-# 5ddlJsT7imztCH9EMA0GCSqGSIb3DQEBAQUABIICAERqcEwNzS6csvofpM+rcOeM
-# /Qnz9K3zXkPWf0kAlezhUHGjLxV4lCx49xfDLf6IWQlYbQ9CHSMuWqvAdLLCVNRQ
-# U2R2aMS9xDYf8ckUBGusrYogyyPrg//sHPUR7iq+7d48jVSNuvqL78Hp10ECzA/c
-# COjq/TXTo2cpsMRUCm0Q1YGNrGCJzZvYJ3fglGj9B1A3FgBTnajrEsBSnTkw0Jv9
-# CwNbD4Ms/ro5xR1ti2BFNCRF4iP2wM4H1dgiaYB7iPB9TX+UVVJc5CEoUxkxcP4r
-# OsLnwobDORzPPTfb4/lMfa6T/uF8BWJy5kZbAUx1kszxpLWcxJOlbaYvr+wltBBG
-# XXTOKSBhgCfKwWuzbZ9r1hOcDuHA+qdGYXW2TMtKjZmDHN8B9mpQT04zd/UdNnCQ
-# Rx3MR/6xDB0hpn8EMnTt6CGHt9NMGVc8RugA81JottBlX5b66rtci7udKZcwUW4L
-# rSoulWNTScmLEP90OjtEGDvhP8+cXO0qwJI1YZVRTuBA9C95+lNByBrRWfhG7GOX
-# Zd5abCt415fLz8TPHgJ94IOhcJ7PWrbZggKbZDobDTyND2h2FY27LP9vOdOAVcvc
-# d6s3y8J3uZAXm4+8mlvCAx7aIS5JK0Nhwv4Yaspv5lsCEUjhinNjIyoMGR80uhGz
-# bViKz9J1TMGT6mtUKftCoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcw
+# CisGAQQBgjcCARUwLwYJKoZIhvcNAQkEMSIEIFMecCcYuxzySI3nqERalZbQfsGG
+# vaClbHaehwhnRD9VMA0GCSqGSIb3DQEBAQUABIICACYuAinFp9UwRmNTcz82Hykb
+# IJUN+tOtkdAkLv87p+ugqpMnseUg3uQpTYRJZw4S4rz8CbDQINofzGJYuBqBt7ae
+# nON149nRUTD+wMibnDDlveRN+NTfdjdXUi9kqVoX/5CTqq3EG7ozxrcm6HYf97Lj
+# EQCEj7BlWyB+UuTSleQ+hXNyseR4iMOnUNsqYgAepbepE16VUWGnbMLrdhHQWxDU
+# 9Lu4dZ25TFYsOARnOPxpWydmYRvKpJoQIufK6u1JAWNhQbpKR7Tyjtgzs8MQoW08
+# iuvcq54Y2kuuZNuNoMjP5OqpWtrqBSee17ujWsdCAjmPprMvt4OaaVovTMS0yso9
+# BCeCCkHWy01Qd/elDNl88cdj0rz1JarDC5bs0Euy0reILm2J2EMoGK3duziZk6uE
+# e7llSOf3n5qeK88IYkanX5pcL4mnc+YoHy4GL60VZego9CyEtxulom828cPfXuFB
+# NsjrEc/wqI5E3zRy+P7rFqwIAtL/uVvYdxfHe0NvXXeyinJgSCsgObpuLiC3LC7T
+# x0Fc2FjU6D/gg5/Xqi8f4oKMZbUzhVeAFHXtQrUpARDMYJAkxIFwi9SV9cVlOk8/
+# nN/4EFAu2unIkJG2a66ThEMfS6YExXHWtjlrMvyC6vLjmwutViAZGqqeAAN0dBDi
+# tJufZSGfLou0Yj77rrgNoYIDIDCCAxwGCSqGSIb3DQEJBjGCAw0wggMJAgEBMHcw
 # YzELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMTswOQYDVQQD
 # EzJEaWdpQ2VydCBUcnVzdGVkIEc0IFJTQTQwOTYgU0hBMjU2IFRpbWVTdGFtcGlu
 # ZyBDQQIQBUSv85SdCDmmv9s/X+VhFjANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3
-# DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDMxNDIwNDY1MFow
-# LwYJKoZIhvcNAQkEMSIEIJ+J7X2WOwTdL5mcmFUEyz9AIEGOPCIgxE7Yz8tCSzD3
-# MA0GCSqGSIb3DQEBAQUABIICAFLRoLE5RtNLcgxcDeBmGTjmDQJQE9Vjrt0RX2dL
-# a+3MhIFd8JsxayYKIof/ki4jjXa6mhFw9qzytpdD7Efb2Ld3BSQxrSHziIKrQctN
-# P/9PV9MiA6PjX1VSF8o4wgbc9m8jHyI24qJ5bKoIM+S99/NSTTeae58lkO4yNgSq
-# MdUvBDcZs7qBjRZPmA9aKILngb5axnsa89FYhJ6tbxUCh91DU8YHP2EQXOJ8bXwA
-# oYjDC5ANHDxFi/gUKkzjBtFTWQwYAF2sxkJ0QltFNOR+P5DCDH2rZ8haaI0oGKf0
-# 10txAn8VWpMI3uWASMqaT7lUmGDOAkIKrFJ50K4otH3E+ZKJ5tZO3sF6pfZlqvwE
-# Ddm7N/GxW5C20GZPHMQn67/RcF0qx2sbPmxIUCYLKN61JaxH8G0Qde5CqWZ5vAVs
-# mmA4tQM1IQeNzOwrrS7gvYLnYYNqVV8QMWI7vuf3GS7Gn8v2im+2EcFS6NBNsNZq
-# 7MnMWyjaGHOuOLY0JoTdnRwYmW6JD4TsRd/0EfPw0a48Gch6bVa4mRouQAyIpK7/
-# VeBUxm89qcovRmzLO6/KGxSjt20LS1xZM07Bkj43aW3RKLyeAcRc2pho2wB+WPB8
-# kd3EHQ39qj++m2vk9Dl20v8hGmF8Vojfc6JJHXNG8HbBR72Bo58TJhjDyuplea26
-# topi
+# DQEJAzELBgkqhkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTI0MDQwNDE5NTkzMFow
+# LwYJKoZIhvcNAQkEMSIEIH70tQ8nefn0EN+BykpD79zd9GlC15phLb724AAOhEKi
+# MA0GCSqGSIb3DQEBAQUABIICAIziUfTVmOJ7O1aL9YejhZovvN5SctUChuavs8IC
+# KtHw+SM/qZSfsIvEqlhsvureQCG1vJyKlPLEmwr+WBVjGbFczADcPT3DVWLc5xDd
+# hvPRK0NiKiX0YOxum9gckUYNfDqFcBoXZXKR95X+8QO286LGuSSQUPQRRus7mJND
+# tlWV1/deWjI0CbqDoiWpoEfAbnoYAxldt2zlxzXpQswGiXkWjktGlTfJhKXpMlUR
+# bSG/zgt4Wc/rPwwbVJVuvEawjuKU8GULuttn62yPG5hJTJnuDiS9tBV+V4puijw+
+# BiGy+Pw3te+O+8nr6hmHOLZ9mq7vSjdtlqnu085dWLNeHNPe/Sg/kcIJzKx/d4of
+# gscRy1pd/MfcAxtL7ur/SdtIUuLYNNauRzkKp2mv6Amlj6EoDtSxHY3z21zijm4l
+# qtocOxqFwBdfr017aERTCEoY69F18FDR+CoQigdd4zwwBGkDeKR+N927e/YDWyGP
+# wqk5AoVuknvOqwsCLSLmqhbGJqpcgxM8TchKar1mhYWx8dn7Lysmw8A/Hze9rmR5
+# Tu27qhFomQb1YPnKo+3DRfR+ctaRB1v750JbbN+SKD3uLkYn1GZ1r5uIFyWyT+pb
+# GAPCs63Zilp/Q5V6RPiySVfTpUUpDrfb+RcIRqGHTQ8N7/MvcFW8Cuweqgy2A2A8
+# JSXn
 # SIG # End signature block

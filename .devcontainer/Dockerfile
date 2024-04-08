@@ -30,7 +30,7 @@ CMD [ "sleep", "infinity" ]
 
 
 # also change the Dockerfile in root before publishing!
-ARG BCCH_VERSION=6.0.11
+ARG BCCH_VERSION=6.0.13
 WORKDIR /bcch
 RUN curl -ssL "https://www.powershellgallery.com/api/v2/package/BcContainerHelper/$BCCH_VERSION" -o bcch.zip \
     && unzip bcch.zip -d temp \
