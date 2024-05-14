@@ -65,16 +65,20 @@ namespace bcaup
                 if (IsValidParamSet(doNotCheckPlatform))
                     doNotCheckPlatformParam = " -doNotCheckPlatformParam";
 
-                int _cacheExpiration = 3600;
-                if (!string.IsNullOrEmpty(cacheExpiration) && int.TryParse(cacheExpiration, out int ParsedCacheExpiration))
-                    _cacheExpiration = ParsedCacheExpiration;
+                DateTimeOffset expiredAfter = DateTimeOffset.Now.AddHours(-1);
+                if (!string.IsNullOrEmpty(cacheExpiration) && int.TryParse(cacheExpiration, out int parsedCacheExpiration))
+                {
+                    int _minCacheExpiration = 900; // minimum allowed is 15 minutes
+                    int _cacheExpiration = parsedCacheExpiration < _minCacheExpiration ? _minCacheExpiration : parsedCacheExpiration;
+                    expiredAfter = DateTimeOffset.Now.AddSeconds(-_cacheExpiration);
+                }
 
                 bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
 
                 var url = "";
 
-                if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.createdOn > DateTimeOffset.Now.AddSeconds(-_cacheExpiration))
+                if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.createdOn > expiredAfter)
                 {
                     response.Headers.Add("X-bcaup-from-cache", "true");
                     response.Headers.Add("X-bcaup-cache-timestamp", cachedUrl.createdOn.ToUnixTimeMilliseconds().ToString());
