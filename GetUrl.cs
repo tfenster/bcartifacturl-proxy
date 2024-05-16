@@ -16,7 +16,7 @@ namespace bcaup
     {
         private readonly ILogger _logger;
         private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
-        private const string VERSION = "1.2.1";
+        private const string VERSION = "1.3.0";
 
         public GetUrl(ILoggerFactory loggerFactory)
         {
@@ -36,7 +36,8 @@ namespace bcaup
             string sasToken,
             string accept_insiderEula,
             string doNotCheckPlatform,
-            string doNotRedirect)
+            string doNotRedirect,
+            string cacheExpiration)
         {
             _logger.LogInformation("C# HTTP trigger function processed a request.");
 
@@ -64,14 +65,17 @@ namespace bcaup
                 if (IsValidParamSet(doNotCheckPlatform))
                     doNotCheckPlatformParam = " -doNotCheckPlatformParam";
 
+                DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
+
                 bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
 
                 var url = "";
 
-                if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.expiration > DateTime.Now)
+                if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.createdOn > expiredAfter)
                 {
                     response.Headers.Add("X-bcaup-from-cache", "true");
+                    response.Headers.Add("X-bcaup-cache-timestamp", cachedUrl.createdOn.ToUnixTimeMilliseconds().ToString());
                     url = cachedUrl.url;
                 }
                 else
@@ -81,7 +85,7 @@ namespace bcaup
                     var ce = new CacheEntry
                     {
                         url = url,
-                        expiration = type.ToLower() == "onprem" ? DateTime.Now.AddHours(24) : DateTime.Now.AddHours(1)
+                        createdOn = DateTime.Now
                     };
                     URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
                 }
@@ -162,10 +166,24 @@ namespace bcaup
             return string.Empty;
         }
 
+        private DateTimeOffset GetExpiredAfter(string cacheExpiration)
+        {
+            if (string.IsNullOrEmpty(cacheExpiration))
+                return DateTimeOffset.Now.AddHours(-1);
+
+            if (!int.TryParse(cacheExpiration, out int parsedCacheExpiration))
+                throw new Exception(string.Format("The provided cache expiration value {0} is not a valid integer.", cacheExpiration));
+
+            if (parsedCacheExpiration < 900) // minimum allowed is 15 minutes
+                throw new ArgumentOutOfRangeException(string.Format("The provided cache expiration value {0} is invalid. It must be 900 or higher.", cacheExpiration));
+
+            return DateTimeOffset.Now.AddSeconds(-parsedCacheExpiration);
+        }
+
         private struct CacheEntry
         {
             public string url;
-            public DateTime expiration;
+            public DateTimeOffset createdOn;
         }
     }
 }
