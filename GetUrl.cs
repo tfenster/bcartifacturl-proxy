@@ -65,13 +65,7 @@ namespace bcaup
                 if (IsValidParamSet(doNotCheckPlatform))
                     doNotCheckPlatformParam = " -doNotCheckPlatformParam";
 
-                DateTimeOffset expiredAfter = DateTimeOffset.Now.AddHours(-1);
-                if (!string.IsNullOrEmpty(cacheExpiration) && int.TryParse(cacheExpiration, out int parsedCacheExpiration))
-                {
-                    int _minCacheExpiration = 900; // minimum allowed is 15 minutes
-                    int _cacheExpiration = parsedCacheExpiration < _minCacheExpiration ? _minCacheExpiration : parsedCacheExpiration;
-                    expiredAfter = DateTimeOffset.Now.AddSeconds(-_cacheExpiration);
-                }
+                DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
 
                 bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
@@ -170,6 +164,20 @@ namespace bcaup
                 return accept_insiderEulaParam;
 
             return string.Empty;
+        }
+
+        private DateTimeOffset GetExpiredAfter(string cacheExpiration)
+        {
+            if (string.IsNullOrEmpty(cacheExpiration))
+                return DateTimeOffset.Now.AddHours(-1);
+
+            if (!int.TryParse(cacheExpiration, out int parsedCacheExpiration))
+                throw new Exception(string.Format("The provided cache expiration value {0} is not a valid integer.", cacheExpiration));
+
+            if (parsedCacheExpiration < 900) // minimum allowed is 15 minutes
+                throw new ArgumentOutOfRangeException(string.Format("The provided cache expiration value {0} is invalid. It must be 900 or higher.", cacheExpiration));
+
+            return DateTimeOffset.Now.AddSeconds(-parsedCacheExpiration);
         }
 
         private struct CacheEntry
