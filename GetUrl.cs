@@ -1,27 +1,22 @@
-using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
 using System.Management.Automation;
 using System.Net;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
 namespace bcaup
 {
-    public class GetUrl
+    public partial class GetUrl(ILoggerFactory loggerFactory)
     {
-        private readonly ILogger _logger;
-        private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
-        private const string VERSION = "1.3.0";
+        private readonly ILogger _logger = loggerFactory.CreateLogger<GetUrl>();
+        private static readonly ConcurrentDictionary<string, CacheEntry> URL_CACHE = new();
+        private const string VERSION = "1.4.0";
 
-        public GetUrl(ILoggerFactory loggerFactory)
-        {
-            _logger = loggerFactory.CreateLogger<GetUrl>();
-        }
+        [GeneratedRegex("\\u001b\\[[0-9]{1,3}m")]
+        private static partial Regex FixedRegex();
 
         [Function("bca-url")]
         public async Task<HttpResponseData> Run(
@@ -33,7 +28,6 @@ namespace bcaup
             string after,
             string before,
             string storageAccount,
-            string sasToken,
             string accept_insiderEula,
             string doNotCheckPlatform,
             string doNotRedirect,
@@ -51,15 +45,14 @@ namespace bcaup
             {
                 if (string.IsNullOrEmpty(type))
                     type = "Sandbox";
-                var typeParam = validateTextParam("type", type);
-                var countryParam = validateTextParam("country", country);
-                var versionParam = validateTextParam("version", version);
-                var selectParam = validateTextParam("select", select);
-                var afterParam = validateTextParam("after", after);
-                var beforeParam = validateTextParam("before", before);
-                var storageAccountParam = validateTextParam("storageAccount", storageAccount);
-                var sasTokenParam = validateTextParam("sasToken", sasToken);
-                var accept_insiderEulaParam = GetAcceptInsiderEulaParam(accept_insiderEula, select, sasToken);
+                var typeParam = ValidateTextParam(nameof(type), type);
+                var countryParam = ValidateTextParam(nameof(country), country);
+                var versionParam = ValidateTextParam(nameof(version), version);
+                var selectParam = ValidateTextParam(nameof(select), select);
+                var afterParam = ValidateTextParam(nameof(after), after);
+                var beforeParam = ValidateTextParam(nameof(before), before);
+                var storageAccountParam = ValidateTextParam(nameof(storageAccount), storageAccount);
+                var accept_insiderEulaParam = GetAcceptInsiderEulaParam(accept_insiderEula);
 
                 var doNotCheckPlatformParam = string.Empty;
                 if (IsValidParamSet(doNotCheckPlatform))
@@ -67,7 +60,7 @@ namespace bcaup
 
                 DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
 
-                bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
+                bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
                 response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
 
                 var url = "";
@@ -90,7 +83,7 @@ namespace bcaup
                     URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
                 }
                 if (doNotRedirect == "true")
-                    response.WriteString(url);
+                    await response.WriteStringAsync(url);
                 else
                 {
                     response.StatusCode = HttpStatusCode.Redirect;
@@ -100,9 +93,9 @@ namespace bcaup
             catch (Exception ex)
             {
                 response.StatusCode = HttpStatusCode.BadRequest;
-                response.WriteString(ex.Message);
+                await response.WriteStringAsync(ex.Message);
                 if (!string.IsNullOrEmpty(bcchCommand))
-                    response.WriteString($"Command was {bcchCommand}");
+                    await response.WriteStringAsync($"Command was {bcchCommand}");
             }
 
             return response;
@@ -123,7 +116,7 @@ namespace bcaup
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            var process = Process.Start(startInfo);
+            var process = Process.Start(startInfo) ?? throw new Exception("Failed to start the pwsh process!");
 
             await process.WaitForExitAsync();
 
@@ -134,15 +127,15 @@ namespace bcaup
                 {
                     err = err.Replace("#< CLIXML\n", "");
                     var deserialized = PSSerializer.DeserializeAsList(err);
-                    err = String.Join("", deserialized);
-                    err = Regex.Replace(err, "\\u001b\\[[0-9]{1,3}m", "");
+                    err = string.Join("", deserialized);
+                    err = FixedRegex().Replace(err, "");
                     throw new Exception(err);
                 }
             }
             return await process.StandardOutput.ReadToEndAsync();
         }
 
-        private string validateTextParam(string paramName, string paramValue)
+        private static string ValidateTextParam(string paramName, string paramValue)
         {
             var validatedParam = "";
             if (!string.IsNullOrEmpty(paramValue))
@@ -150,13 +143,13 @@ namespace bcaup
             return validatedParam;
         }
 
-        private bool IsValidParamSet(string param)
+        private static bool IsValidParamSet(string param)
         {
             // Accept parameter without setting explict to true and with format "parameter=true"
-            return (param is not null && (param.All(char.IsWhiteSpace) || param.ToLower() == "true"));
+            return param is not null && (param.All(char.IsWhiteSpace) || param.Equals("true", StringComparison.CurrentCultureIgnoreCase));
         }
 
-        private string GetAcceptInsiderEulaParam(string accept_insiderEula, string select, string sasToken)
+        private static string GetAcceptInsiderEulaParam(string accept_insiderEula)
         {
             var accept_insiderEulaParam = " -accept_insiderEula";
 
@@ -166,7 +159,7 @@ namespace bcaup
             return string.Empty;
         }
 
-        private DateTimeOffset GetExpiredAfter(string cacheExpiration)
+        private static DateTimeOffset GetExpiredAfter(string cacheExpiration)
         {
             if (string.IsNullOrEmpty(cacheExpiration))
                 return DateTimeOffset.Now.AddHours(-1);
