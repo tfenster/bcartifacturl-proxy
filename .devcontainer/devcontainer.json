@@ -1,30 +1,34 @@
-// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.217.4/containers/azure-functions-dotnet-6-isolated
 {
-	"name": "Azure Functions & C# - .NET 6 (Isolated)",
-	"dockerFile": "Dockerfile",
-	"forwardPorts": [ 7071 ],
-
-	// Set *default* container specific settings.json values on container create.
-	"settings": {},
-
-	// Add the IDs of extensions you want installed when the container is created.
-	"extensions": [
-		"ms-azuretools.vscode-azurefunctions",
-		"ms-dotnettools.csharp",
-		"humao.rest-client",
-		"ms-vscode.powershell",
-		"ms-azuretools.vscode-docker",
-		"eamodio.gitlens"
+	"name": "Azure Functions (.NET)",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "app",
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"forwardPorts": [
+		7071,
+		10000,
+		10001,
+		10002
 	],
-
-	"features": {
-		"powershell": "latest",
-		"docker-from-docker": "latest"
+	"otherPortsAttributes": {
+		"onAutoForward": "ignore"
 	},
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "cp /bcch/* /workspaces/bcartifacturl-proxy && sed -i 's/$telemetryScope/#$telemetryScope/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Track/#Track/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Export-ModuleMember/#Export-ModuleMember/g' ./Get-BCArtifactUrl.ps1 && dotnet restore",
-
-	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
-	"remoteUser": "vscode"
+	"features": {
+		"ghcr.io/devcontainers/features/azure-cli:1": {},
+		"ghcr.io/jlaundry/devcontainer-features/azure-functions-core-tools:1": {},
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+		"ghcr.io/devcontainers/features/powershell:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-azuretools.vscode-azurefunctions",
+				"ms-dotnettools.csdevkit",
+				"humao.rest-client",
+				"ms-vscode.powershell",
+				"ms-azuretools.vscode-docker",
+				"eamodio.gitlens"
+			]
+		}
+	},
+	"postCreateCommand": "cp /bcch/* /workspaces/bcartifacturl-proxy && sed -i 's/$telemetryScope/#$telemetryScope/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Track/#Track/g' ./Get-BCArtifactUrl.ps1 && sed -i 's/Export-ModuleMember/#Export-ModuleMember/g' ./Get-BCArtifactUrl.ps1 && dotnet restore"
 }

@@ -1,189 +1,178 @@
-using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
 using System.Management.Automation;
 using System.Net;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
 
-namespace bcaup
+namespace bcaup;
+public partial class GetUrl(ILoggerFactory loggerFactory)
 {
-    public class GetUrl
+    private readonly ILogger _logger = loggerFactory.CreateLogger<GetUrl>();
+    private static readonly ConcurrentDictionary<string, CacheEntry> URL_CACHE = new();
+    private const string VERSION = "1.4.0";
+    private static readonly string? BCCH_VERSION = Environment.GetEnvironmentVariable("BCCH_VERSION");
+
+    [GeneratedRegex("\\u001b\\[[0-9]{1,3}m")]
+    private static partial Regex FixedRegex();
+
+    [Function("bca-url")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "bca-url/{type?}/{country?}/{version?}")] HttpRequestData req,
+        string type,
+        string version,
+        string country,
+        string select,
+        string after,
+        string before,
+        string storageAccount,
+        string accept_insiderEula,
+        string doNotCheckPlatform,
+        string doNotRedirect,
+        string cacheExpiration)
     {
-        private readonly ILogger _logger;
-        private static ConcurrentDictionary<string, CacheEntry> URL_CACHE = new ConcurrentDictionary<string, CacheEntry>();
-        private const string VERSION = "1.3.0";
+        _logger.LogInformation("C# HTTP trigger function processed a request.");
 
-        public GetUrl(ILoggerFactory loggerFactory)
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
+        response.Headers.Add("X-bccontainerhelper-version", BCCH_VERSION ?? "Unknown");
+        response.Headers.Add("X-bcaup-version", VERSION);
+        var bcchCommand = string.Empty;
+
+        try
         {
-            _logger = loggerFactory.CreateLogger<GetUrl>();
-        }
+            if (string.IsNullOrEmpty(type))
+                type = "Sandbox";
+            var typeParam = ValidateTextParam(nameof(type), type);
+            var countryParam = ValidateTextParam(nameof(country), country);
+            var versionParam = ValidateTextParam(nameof(version), version);
+            var selectParam = ValidateTextParam(nameof(select), select);
+            var afterParam = ValidateTextParam(nameof(after), after);
+            var beforeParam = ValidateTextParam(nameof(before), before);
+            var storageAccountParam = ValidateTextParam(nameof(storageAccount), storageAccount);
+            var accept_insiderEulaParam = GetAcceptInsiderEulaParam(accept_insiderEula);
 
-        [Function("bca-url")]
-        public async Task<HttpResponseData> Run(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "bca-url/{type?}/{country?}/{version?}")] HttpRequestData req,
-            string type,
-            string version,
-            string country,
-            string select,
-            string after,
-            string before,
-            string storageAccount,
-            string sasToken,
-            string accept_insiderEula,
-            string doNotCheckPlatform,
-            string doNotRedirect,
-            string cacheExpiration)
-        {
-            _logger.LogInformation("C# HTTP trigger function processed a request.");
+            var doNotCheckPlatformParam = string.Empty;
+            if (IsValidParamSet(doNotCheckPlatform))
+                doNotCheckPlatformParam = " -doNotCheckPlatform";
 
-            var response = req.CreateResponse(HttpStatusCode.OK);
-            response.Headers.Add("Content-Type", "text/plain; charset=utf-8");
-            response.Headers.Add("X-bccontainerhelper-version", Environment.GetEnvironmentVariable("BCCH_VERSION"));
-            response.Headers.Add("X-bcaup-version", VERSION);
-            var bcchCommand = "";
+            DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
 
-            try
+            bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
+            response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
+
+            var url = string.Empty;
+
+            if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.createdOn > expiredAfter)
             {
-                if (string.IsNullOrEmpty(type))
-                    type = "Sandbox";
-                var typeParam = validateTextParam("type", type);
-                var countryParam = validateTextParam("country", country);
-                var versionParam = validateTextParam("version", version);
-                var selectParam = validateTextParam("select", select);
-                var afterParam = validateTextParam("after", after);
-                var beforeParam = validateTextParam("before", before);
-                var storageAccountParam = validateTextParam("storageAccount", storageAccount);
-                var sasTokenParam = validateTextParam("sasToken", sasToken);
-                var accept_insiderEulaParam = GetAcceptInsiderEulaParam(accept_insiderEula, select, sasToken);
-
-                var doNotCheckPlatformParam = string.Empty;
-                if (IsValidParamSet(doNotCheckPlatform))
-                    doNotCheckPlatformParam = " -doNotCheckPlatformParam";
-
-                DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
-
-                bcchCommand = $"Get-BCArtifactUrl{typeParam}{countryParam}{versionParam}{selectParam}{afterParam}{beforeParam}{storageAccountParam}{sasTokenParam}{accept_insiderEulaParam}{doNotCheckPlatformParam}";
-                response.Headers.Add("X-bccontainerhelper-command", bcchCommand);
-
-                var url = "";
-
-                if (URL_CACHE.TryGetValue(bcchCommand.ToLower(), out CacheEntry cachedUrl) && cachedUrl.createdOn > expiredAfter)
-                {
-                    response.Headers.Add("X-bcaup-from-cache", "true");
-                    response.Headers.Add("X-bcaup-cache-timestamp", cachedUrl.createdOn.ToUnixTimeMilliseconds().ToString());
-                    url = cachedUrl.url;
-                }
-                else
-                {
-                    response.Headers.Add("X-bcaup-from-cache", "false");
-                    url = await GetUrlFromBackend(bcchCommand);
-                    var ce = new CacheEntry
-                    {
-                        url = url,
-                        createdOn = DateTime.Now
-                    };
-                    URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
-                }
-                if (doNotRedirect == "true")
-                    response.WriteString(url);
-                else
-                {
-                    response.StatusCode = HttpStatusCode.Redirect;
-                    response.Headers.Add("Location", url);
-                }
+                response.Headers.Add("X-bcaup-from-cache", "true");
+                response.Headers.Add("X-bcaup-cache-timestamp", cachedUrl.createdOn.ToUnixTimeMilliseconds().ToString());
+                url = cachedUrl.url;
             }
-            catch (Exception ex)
+            else
             {
-                response.StatusCode = HttpStatusCode.BadRequest;
-                response.WriteString(ex.Message);
-                if (!string.IsNullOrEmpty(bcchCommand))
-                    response.WriteString($"Command was {bcchCommand}");
-            }
-
-            return response;
-        }
-
-        private async Task<string> GetUrlFromBackend(string bcchCommand)
-        {
-            var psCommmand = $". ./HelperFunctions.ps1; . ./Get-BCArtifactUrl.ps1; {bcchCommand}";
-            _logger.LogDebug(psCommmand);
-            var psCommandBytes = System.Text.Encoding.Unicode.GetBytes(psCommmand);
-            var psCommandBase64 = Convert.ToBase64String(psCommandBytes);
-
-            var startInfo = new ProcessStartInfo()
-            {
-                FileName = "pwsh",
-                Arguments = $"-NoProfile -ExecutionPolicy unrestricted -EncodedCommand {psCommandBase64}",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            var process = Process.Start(startInfo);
-
-            await process.WaitForExitAsync();
-
-            var err = await process.StandardError.ReadToEndAsync();
-            if (!string.IsNullOrWhiteSpace(err))
-            {
-                if (err.StartsWith("#< CLIXML\n"))
+                response.Headers.Add("X-bcaup-from-cache", "false");
+                url = await GetUrlFromBackend(bcchCommand);
+                var ce = new CacheEntry
                 {
-                    err = err.Replace("#< CLIXML\n", "");
-                    var deserialized = PSSerializer.DeserializeAsList(err);
-                    err = String.Join("", deserialized);
-                    err = Regex.Replace(err, "\\u001b\\[[0-9]{1,3}m", "");
-                    throw new Exception(err);
-                }
+                    url = url,
+                    createdOn = DateTime.Now
+                };
+                URL_CACHE.AddOrUpdate(bcchCommand.ToLower(), ce, (key, oldValue) => ce);
             }
-            return await process.StandardOutput.ReadToEndAsync();
+            if (doNotRedirect == "true")
+                await response.WriteStringAsync(url);
+            else
+            {
+                response.StatusCode = HttpStatusCode.Redirect;
+                response.Headers.Add("Location", url);
+            }
         }
-
-        private string validateTextParam(string paramName, string paramValue)
+        catch (Exception ex)
         {
-            var validatedParam = "";
-            if (!string.IsNullOrEmpty(paramValue))
-                validatedParam = $" -{paramName} \"{paramValue}\"";
-            return validatedParam;
+            response.StatusCode = HttpStatusCode.BadRequest;
+            await response.WriteStringAsync(ex.Message);
+            if (!string.IsNullOrEmpty(bcchCommand))
+                await response.WriteStringAsync($"Command was {bcchCommand}");
         }
 
-        private bool IsValidParamSet(string param)
+        return response;
+    }
+
+    private async Task<string> GetUrlFromBackend(string bcchCommand)
+    {
+        var psCommmand = $". ./HelperFunctions.ps1; . ./Get-BCArtifactUrl.ps1; {bcchCommand}";
+        _logger.LogDebug(psCommmand);
+        var psCommandBytes = System.Text.Encoding.Unicode.GetBytes(psCommmand);
+        var psCommandBase64 = Convert.ToBase64String(psCommandBytes);
+
+        var startInfo = new ProcessStartInfo()
         {
-            // Accept parameter without setting explict to true and with format "parameter=true"
-            return (param is not null && (param.All(char.IsWhiteSpace) || param.ToLower() == "true"));
-        }
+            FileName = "pwsh",
+            Arguments = $"-NoProfile -ExecutionPolicy unrestricted -EncodedCommand {psCommandBase64}",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        using var process = Process.Start(startInfo) ?? throw new Exception("Failed to start the pwsh process!");
 
-        private string GetAcceptInsiderEulaParam(string accept_insiderEula, string select, string sasToken)
+        await process.WaitForExitAsync();
+
+        var err = await process.StandardError.ReadToEndAsync();
+        if (!string.IsNullOrWhiteSpace(err))
         {
-            var accept_insiderEulaParam = " -accept_insiderEula";
-
-            if (IsValidParamSet(accept_insiderEula))
-                return accept_insiderEulaParam;
-
-            return string.Empty;
+            if (err.StartsWith("#< CLIXML\n"))
+            {
+                err = err.Replace("#< CLIXML\n", "");
+                var deserialized = PSSerializer.DeserializeAsList(err);
+                err = string.Join("", deserialized);
+                err = FixedRegex().Replace(err, "");
+                throw new Exception(err);
+            }
         }
+        return await process.StandardOutput.ReadToEndAsync();
+    }
 
-        private DateTimeOffset GetExpiredAfter(string cacheExpiration)
-        {
-            if (string.IsNullOrEmpty(cacheExpiration))
-                return DateTimeOffset.Now.AddHours(-1);
+    private static string ValidateTextParam(string paramName, string paramValue)
+    {
+        return !string.IsNullOrEmpty(paramValue) ? $" -{paramName} \"{paramValue}\"" : string.Empty;
+    }
 
-            if (!int.TryParse(cacheExpiration, out int parsedCacheExpiration))
-                throw new Exception(string.Format("The provided cache expiration value {0} is not a valid integer.", cacheExpiration));
+    private static bool IsValidParamSet(string? param)
+    {
+        // Accept parameter without setting explict to true and with format "parameter=true"
+        return !string.IsNullOrWhiteSpace(param) && param.Equals("true", StringComparison.CurrentCultureIgnoreCase);
+    }
 
-            if (parsedCacheExpiration < 900) // minimum allowed is 15 minutes
-                throw new ArgumentOutOfRangeException(string.Format("The provided cache expiration value {0} is invalid. It must be 900 or higher.", cacheExpiration));
+    private static string GetAcceptInsiderEulaParam(string accept_insiderEula)
+    {
+        var accept_insiderEulaParam = " -accept_insiderEula";
 
-            return DateTimeOffset.Now.AddSeconds(-parsedCacheExpiration);
-        }
+        if (IsValidParamSet(accept_insiderEula))
+            return accept_insiderEulaParam;
 
-        private struct CacheEntry
-        {
-            public string url;
-            public DateTimeOffset createdOn;
-        }
+        return string.Empty;
+    }
+
+    private static DateTimeOffset GetExpiredAfter(string cacheExpiration)
+    {
+        if (string.IsNullOrEmpty(cacheExpiration))
+            return DateTimeOffset.Now.AddHours(-1);
+
+        if (!int.TryParse(cacheExpiration, out int parsedCacheExpiration))
+            throw new Exception(string.Format("The provided cache expiration value {0} is not a valid integer.", cacheExpiration));
+
+        if (parsedCacheExpiration < 900) // minimum allowed is 15 minutes
+            throw new ArgumentOutOfRangeException(string.Format("The provided cache expiration value {0} is invalid. It must be 900 or higher.", cacheExpiration));
+
+        return DateTimeOffset.Now.AddSeconds(-parsedCacheExpiration);
+    }
+
+    private struct CacheEntry
+    {
+        public string url;
+        public DateTimeOffset createdOn;
     }
 }
