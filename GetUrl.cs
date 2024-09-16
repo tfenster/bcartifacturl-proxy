@@ -56,7 +56,7 @@ public partial class GetUrl(ILoggerFactory loggerFactory)
 
             var doNotCheckPlatformParam = string.Empty;
             if (IsValidParamSet(doNotCheckPlatform))
-                doNotCheckPlatformParam = " -doNotCheckPlatformParam";
+                doNotCheckPlatformParam = " -doNotCheckPlatform";
 
             DateTimeOffset expiredAfter = GetExpiredAfter(cacheExpiration);
 
