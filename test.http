@@ -1,4 +1,7 @@
-@baseurl = http://localhost:7071/bca-url
+# local
+@baseurl = https://localhost:7071/bca-url
+# cloud
+# @baseurl = https://bca-url-proxy.azurewebsites.net/bca-url
 
 ### TEST #1
 ### X-bccontainerhelper-command: Get-BCArtifactUrl -type "Sandbox"
