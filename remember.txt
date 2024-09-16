@@ -2,6 +2,7 @@ Update version in GetUrl.cs
 Check latest in https://hub.docker.com/r/tobiasfenster/bcaup/tags
 docker build -t tobiasfenster/bcaup:<version> . 
 docker push  tobiasfenster/bcaup:<version>
+maybe sudo docker -H unix:///var/run/docker-host.sock ...
 https://preview.portal.azure.com/#@arssolvendi.onmicrosoft.com/resource/subscriptions/94670b10-08d0-4d17-bcfe-e01f701be9ff/resourceGroups/bcaurlproxy/providers/Microsoft.Web/sites/bca-url-proxy/vstscd
 
 az group create --name bcaurlproxy --location germanywestcentral
