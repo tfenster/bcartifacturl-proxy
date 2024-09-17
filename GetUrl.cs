@@ -12,7 +12,7 @@ public partial class GetUrl(ILoggerFactory loggerFactory)
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<GetUrl>();
     private static readonly ConcurrentDictionary<string, CacheEntry> URL_CACHE = new();
-    private const string VERSION = "1.4.0";
+    private const string VERSION = "1.4.2";
     private static readonly string? BCCH_VERSION = Environment.GetEnvironmentVariable("BCCH_VERSION");
 
     [GeneratedRegex("\\u001b\\[[0-9]{1,3}m")]
