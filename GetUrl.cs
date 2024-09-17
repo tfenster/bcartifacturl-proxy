@@ -142,7 +142,7 @@ public partial class GetUrl(ILoggerFactory loggerFactory)
 
     private static bool IsValidParamSet(string? param)
     {
-        // Accept parameter without setting explict to true and with format "parameter=true"
+        // Accept parameter without setting explicit to true and with format "parameter=true"
         return param is not null && (param.All(char.IsWhiteSpace) || param.Equals("true", StringComparison.CurrentCultureIgnoreCase));
     }
 
