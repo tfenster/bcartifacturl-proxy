@@ -1,4 +1,4 @@
-Update version in GetUrl.cs
+!!! Update version in GetUrl.cs !!!
 Check latest in https://hub.docker.com/r/tobiasfenster/bcaup/tags
 docker build -t tobiasfenster/bcaup:<version> . 
 docker push  tobiasfenster/bcaup:<version>
