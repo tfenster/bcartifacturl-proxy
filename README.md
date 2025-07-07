@@ -1,5 +1,7 @@
 # bcartifacturl-proxy
 
+**Archive note:** As explained [here](https://tobiasfenster.io/discontinuation-of-the-bc-artifact-url-proxy), the main usage scenario for the BC artifact URL proxy is no longer relevant. Therefore, the backend has been shut down and this repo is archived. If anyone wants to continue this effort for whatever reason, please reach out.
+
 Proxy for artifact URLs read by bccontainerhelper. You can run this on your own environment with the docker image tobiasfenster/bcaup or you can use the publicly available Azure Function https://bca-url-proxy.azurewebsites.net/bca-url/ e.g. like this: https://bca-url-proxy.azurewebsites.net/bca-url/sandbox/de/19
 
 
